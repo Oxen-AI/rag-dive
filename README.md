@@ -35,8 +35,22 @@ oxen download oxbot/SQuAD-Ctx-Embeddings embeddings.parquet
 
 # Setup Chroma
 
+https://docs.trychroma.com/troubleshooting#sqlite
+
 ```bash
-pip install chromadb
+pip install chromadb==0.4.3
+```
+
+```bash
+vim ~/.venv_rag/lib/python3.11/site-packages/chromadb/__init__.py
+```
+
+Add these few lines...
+
+```python
+__import__('pysqlite3')
+import sys
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 ```
 
 
@@ -47,5 +61,10 @@ chroma_client = chromadb.Client()
 collection = chroma_client.create_collection(name="squad_embeddings")
 ```
 
+Insert all the embeddings into chroma, takes about 2 minutes.
+
+```bash
+python index_into_chroma.py <embeddings.parquet>
+```
 
 
