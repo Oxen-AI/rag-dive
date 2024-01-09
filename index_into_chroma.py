@@ -5,14 +5,30 @@ from tqdm import tqdm
 # import sys
 # sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import chromadb
+import argparse
 
-chroma_client = chromadb.PersistentClient(path="chroma-dev.db")
+# parse arguments for input_file, output_db, should_create_collection
+parser = argparse.ArgumentParser()
+parser.add_argument("-i", "--input_file", type=str)
+parser.add_argument("-o", "--output_db", type=str)
+parser.add_argument("--collection", type=str, default="squad_embeddings")
+parser.add_argument("--should_create", type=bool, default=True)
+args = parser.parse_args()
 
-collection_name = "squad_embeddings"
+input_file = args.input_file
+output_db = args.output_db
+collection_name = args.collection
+should_create = args.should_create
+
+chroma_client = chromadb.PersistentClient(path=output_db)
+
 print(f"Creating collection {collection_name}...")
-collection = chroma_client.create_collection(name=collection_name)
+if should_create:
+    collection = chroma_client.create_collection(name=collection_name)
+else:
+    collection = chroma_client.get_collection(name=collection_name)
 
-embeddings_file = "dev_contexts_embeddings.parquet"
+embeddings_file = input_file
 print(f"Reading embeddings file {embeddings_file}...")
 df = pd.read_parquet(embeddings_file)
 

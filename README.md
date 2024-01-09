@@ -54,12 +54,12 @@ chroma_client = chromadb.Client()
 collection = chroma_client.create_collection(name="squad_embeddings")
 ```
 
-Insert all the embeddings into chroma, takes about 2 minutes.
+Insert all the embeddings into chroma.
 
 TODO: Make cli params work
 
 ```bash
-python index_into_chroma.py <embeddings.parquet>
+python index_into_chroma.py -i embeddings.parquet -o chroma.db
 ```
 
 # Compute Recall

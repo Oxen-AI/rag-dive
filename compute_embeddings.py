@@ -15,8 +15,8 @@ import json
 import torch
 from tqdm import tqdm
 
-tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-base")
-model = AutoModel.from_pretrained("thenlper/gte-base").cuda()
+tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-large")
+model = AutoModel.from_pretrained("thenlper/gte-large").cuda()
 
 def average_pool(last_hidden_states, attention_mask):
     last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
@@ -126,5 +126,5 @@ if __name__ == '__main__':
     embed_dataset(
         input_dataset="datasets/Not-In-Context",
         input_file="dev_contexts.jsonl",
-        output_dataset="oxbot/SQuAD-Dev-Embed-4"
+        output_dataset="oxbot/SQuAD-Dev-Embed-5"
     )
