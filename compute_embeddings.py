@@ -26,8 +26,7 @@ def compute_embedding(batch):
     def _substr(s, n):
             return s[:n] + "..." if len(s) > n else s
 
-    input_texts = [_substr(chunk['text'], 512) for chunk in batch]
-    # input_texts = [item['text'] for item in batch]
+    input_texts = [_substr(chunk['context'], 512) for chunk in batch]
 
     # Tokenize the input texts
     batch_dict = tokenizer(input_texts, max_length=512, padding=True, truncation=True, return_tensors='pt')
@@ -63,11 +62,11 @@ def save_embeddings(
     print(f"Saving embeddings to {outfile}")
     table = pa.Table.from_arrays(
         [
-            pa.array([chunk['text'] for chunk in acc_chunks]),
-            pa.array([chunk['source'] for chunk in acc_chunks]),
+            pa.array([chunk['context'] for chunk in acc_chunks]),
+            pa.array([chunk['question_ids'] for chunk in acc_chunks]),
             pa.array(embeddings),
         ],
-        names=["text", "source", "embedding"],
+        names=["context", "question_ids", "embedding"],
     )
     pq.write_table(table, outfile)
     
@@ -108,7 +107,7 @@ def embed_dataset(
     acc_chunks = []
     embeddings = []
     for i, batch in enumerate(tqdm(dataset)):
-        batch_chunks, batch_embeddings = compute_embedding(batch)
+        batch_chunks, batch_embeddings = compute_embedding([batch])
         # print(batch_chunks)
         # print(batch_embeddings)
         acc_chunks.extend(batch_chunks)
@@ -127,5 +126,5 @@ if __name__ == '__main__':
     embed_dataset(
         input_dataset="datasets/Not-In-Context",
         input_file="dev_contexts.jsonl",
-        output_dataset="oxbot/SQuAD-Dev-Embed-2"
+        output_dataset="oxbot/SQuAD-Dev-Embed-4"
     )
