@@ -8,29 +8,22 @@ into RAG.
 # Generate context data
 
 ```bash
-oxen clone https://hub.oxen.ai/ox/SQuAD --shallow
-cd SQuAD
-oxen remote download train.csv
-cd ..
-python generate_context.py
-```
-
-# Embedding Server
-
-```bash
-modal serve embeddings.py
+oxen download ox/SQuAD dev.csv
+python generate_context.py dev.csv dev_contexts.jsonl
 ```
 
 # Compute embeddings
 
+TODO: take in CLI args
+
 ```bash
-modal run embeddings.py
+python compute_embeddings.py
 ```
 
 # Download embeddings from Oxen
 
 ```bash
-oxen download oxbot/SQuAD-Ctx-Embeddings embeddings.parquet
+oxen download oxbot/SQuAD-Dev-Embed-4 dev_contexts_embeddings.parquet
 ```
 
 # Setup Chroma
@@ -63,8 +56,18 @@ collection = chroma_client.create_collection(name="squad_embeddings")
 
 Insert all the embeddings into chroma, takes about 2 minutes.
 
+TODO: Make cli params work
+
 ```bash
 python index_into_chroma.py <embeddings.parquet>
 ```
 
+# Compute Recall
 
+Figure out how well the embeddings retrieval system works
+
+TODO: Take in N as CLI param
+
+```bash
+python compute_recall.py ~/Datasets/Not-In-Context/squad_dev.jsonl chroma-dev.db results.jsonl
+```

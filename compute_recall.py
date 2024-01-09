@@ -10,7 +10,7 @@ from transformers import AutoTokenizer, AutoModel
 import sys
 
 tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-large")
-model = AutoModel.from_pretrained("thenlper/gte-large").to('cuda')
+model = AutoModel.from_pretrained("thenlper/gte-large")# .to('cuda')
 
 def average_pool(last_hidden_states: Tensor,
                  attention_mask: Tensor) -> Tensor:
@@ -23,7 +23,7 @@ def compute_embedding(text):
     ]
 
     # Tokenize the input texts
-    batch_dict = tokenizer(input_texts, max_length=512, padding=True, truncation=True, return_tensors='pt').to('cuda')
+    batch_dict = tokenizer(input_texts, max_length=512, padding=True, truncation=True, return_tensors='pt')# .to('cuda')
 
     outputs = model(**batch_dict)
     embeddings = average_pool(outputs.last_hidden_state, batch_dict['attention_mask'])
@@ -35,20 +35,21 @@ def compute_embedding(text):
     return embeddings
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: python compute_recall.py <input.jsonl> <output.jsonl>")
+    if len(sys.argv) != 4:
+        print("Usage: python compute_recall.py <input.jsonl> <chroma_db> <output.jsonl>")
         exit()
 
+    examples_file = sys.argv[1] # "SQuAD/random.jsonl"
+    chroma_db = sys.argv[2] # chroma.db
+    results_file = sys.argv[3] # "SQuAD/results.jsonl"
+
     # Connect to chromadb
-    chroma_client = chromadb.PersistentClient(path="chroma.db")
+    chroma_client = chromadb.PersistentClient(path=chroma_db)
 
     collection_name = "squad_embeddings"
     print(f"Reading collection {collection_name}...")
 
     collection = chroma_client.get_collection(name=collection_name)
-
-    examples_file = sys.argv[1] # "SQuAD/random.jsonl"
-    results_file = sys.argv[2] # "SQuAD/results.jsonl"
 
     examples = []
     with open(examples_file, 'r') as f:

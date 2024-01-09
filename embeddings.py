@@ -6,7 +6,6 @@ import subprocess
 from pathlib import Path
 from modal import Image, Stub, Volume, gpu, method, Secret
 
-
 from util import generate_batches
 
 GPU_CONFIG = gpu.A10G()
@@ -15,16 +14,12 @@ BATCH_SIZE = 512
 PORT_NUM = 8000
 N_GPU = 10
 
-volume = Volume.persisted("embedding-wikipedia")
+volume = Volume.persisted("embedding-dataset")
 cache_dir = "/data"
 data_dir = f"{cache_dir}/embeddings"
 DATA_PATH = Path(data_dir)
 # set OXEN_CONFIG_DIR environment var to data_dir
 os.environ["OXEN_CONFIG_DIR"] = data_dir
-
-dataset_name = "oxbot/SQuAD-Ctx-Embeddings"
-dataset_file = "embeddings.parquet"
-
 
 # https://huggingface.co/docs/text-embeddings-inference/index
 DOCKER_IMAGE = (
@@ -68,7 +63,6 @@ def download_model():
 
 
 stub = Stub("embeddings")
-
 tei_image = (
     Image.from_registry(
         "ghcr.io/huggingface/text-embeddings-inference:86-0.4.0",
@@ -129,8 +123,11 @@ class TextEmbeddingsInference:
     secret=Secret.from_name("oxenai-api-key"),
 )
 def embed_dataset(
-    sample_size: int = 50,
-    batch_size: int = 512 * 50
+    input_repo:str,
+    input_file: str,
+    output_repo: str,
+    output_file: str,
+    batch_size: int = 512
 ):
     from oxen.streaming_dataset import load_dataset
     from oxen.auth import config_auth as config_oxen_auth
@@ -146,12 +143,10 @@ def embed_dataset(
 
     start = time.perf_counter()
     # Load the dataset from https://www.oxen.ai/datasets/Wikipedia
-    print("Streaming dataset from Oxen.ai...")
-    # dataset = load_dataset("ox/SQuAD-Context", paths="contexts.jsonl")
-    repo_path = os.path.join(data_dir, "SQuAD-Context")
-    repo = oxen.clone("ox/SQuAD-Context", path=repo_path)
-    
-    input_file = os.path.join(repo_path, "contexts.jsonl")
+    print("Downloading dataset from Oxen.ai...")
+    repo_path = os.path.join(data_dir, input_repo)
+    repo = oxen.clone(input_repo, path=repo_path)
+    input_file = os.path.join(repo_path, input_file)
     
     # Load the dataset from the local file
     dataset = []
@@ -159,19 +154,12 @@ def embed_dataset(
         for line in f:
             dataset.append(json.loads(line))
 
-    
     print(f"Dataset loaded in {time.perf_counter()-start:.2f} seconds")
     print(f"Dataset size {len(dataset)} rows")
 
-    # Generate a subset of the dataset
-    subset = []
-    for i in tqdm(range(sample_size)):
-        subset.append(dataset[i])
-
     # Interface to compute embeddings
     model = TextEmbeddingsInference()
-
-    batches = generate_batches(subset, batch_size=batch_size)
+    batches = generate_batches(dataset, batch_size=batch_size)
 
     acc_chunks = []
     embeddings = []
@@ -180,7 +168,7 @@ def embed_dataset(
         embeddings.extend(batch_embeddings)
 
     # Save embeddings to Oxen.ai
-    print(f"Pushing to hub {dataset_name}")
+    print(f"Pushing to hub {output_repo}")
     oxenai_token = os.environ["OXENAI_API_KEY"]
     config_oxen_auth(oxenai_token)
 
@@ -196,21 +184,25 @@ def embed_dataset(
         ],
         names=["context", "question_ids", "embedding"],
     )
-    pq.write_table(table, os.path.join(data_dir, dataset_file))
-    repo.add(dataset_file)
+    pq.write_table(table, os.path.join(data_dir, output_file))
+    repo.add(output_file)
     print(repo.status())
     repo.commit("Adding embeddings")
 
-    remote_repo = create_repo(dataset_name)
+    remote_repo = create_repo(output_repo)
     print("Created remote repo")
     print(remote_repo)
     print(remote_repo.url())
 
     repo.set_remote("origin", remote_repo.url())
     repo.push()
-    
-
 
 @stub.local_entrypoint()
-def main():
-    embed_dataset.remote(sample_size=19_028, batch_size=10)
+def main(input_repo: str, input_file: str, output_repo: str, output_file: str):
+    embed_dataset.remote(
+        input_repo=input_repo,
+        input_file=input_file,
+        output_repo=output_repo,
+        output_file=output_file,
+        batch_size=10
+    )

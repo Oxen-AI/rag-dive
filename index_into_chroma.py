@@ -1,18 +1,18 @@
 import pandas as pd
 import time
 from tqdm import tqdm
-__import__('pysqlite3')
-import sys
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+# __import__('pysqlite3')
+# import sys
+# sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import chromadb
 
-chroma_client = chromadb.PersistentClient(path="chroma.db")
+chroma_client = chromadb.PersistentClient(path="chroma-dev.db")
 
 collection_name = "squad_embeddings"
 print(f"Creating collection {collection_name}...")
 collection = chroma_client.create_collection(name=collection_name)
 
-embeddings_file = "embeddings.parquet"
+embeddings_file = "dev_contexts_embeddings.parquet"
 print(f"Reading embeddings file {embeddings_file}...")
 df = pd.read_parquet(embeddings_file)
 

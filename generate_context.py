@@ -1,8 +1,14 @@
 
 import pandas as pd
+import sys
+
+# make sure we have an input file and output file from the command line
+if len(sys.argv) != 3:
+    print(f"Usage: python {sys.argv[0]} <input_file> <output_file>")
+    sys.exit(1)
 
 # iterate over the rows in the csv file
-filename = "SQuAD/train.csv"
+filename = sys.argv[1]
 df = pd.read_csv(filename)
 
 contexts = {}
@@ -27,4 +33,4 @@ for context in contexts:
 df = pd.DataFrame(data)
 
 print("Writing to file...")
-df.to_json("SQuAD/contexts.jsonl", orient="records", lines=True)
+df.to_json(sys.argv[2], orient="records", lines=True)
