@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from transformers import AutoTokenizer, AutoModel
 import sys
+import argparse
 
 tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-large")
 model = AutoModel.from_pretrained("thenlper/gte-large")# .to('cuda')
@@ -35,18 +36,25 @@ def compute_embedding(text):
     return embeddings
 
 def main():
-    if len(sys.argv) != 4:
-        print("Usage: python compute_recall.py <input.jsonl> <chroma_db> <output.jsonl>")
-        exit()
-
-    examples_file = sys.argv[1] # "SQuAD/random.jsonl"
-    chroma_db = sys.argv[2] # chroma.db
-    results_file = sys.argv[3] # "SQuAD/results.jsonl"
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-i", "--input_file", type=str, required=True)
+    parser.add_argument("-d", "--database", type=str, required=True)
+    parser.add_argument("-o", "--output_file", type=str, required=True)
+    parser.add_argument("-c", "--collection", type=str, default="squad_embeddings")
+    parser.add_argument("-n", "--top_n", type=int, default=10, help="Number of results to return per query.")
+    parser.add_argument("-l", "--limit", type=int, help="Number of examples to run for. If -1 will run for all.", default=-1)
+    parser.add_argument("-f", "--filter", type=str, help="Answers we want to filter out.", default=None)
+    args = parser.parse_args()
+    
+    examples_file = args.input_file # "SQuAD/val.jsonl"
+    chroma_db = args.database # "chroma.db"
+    results_file = args.output_file # "SQuAD/results.jsonl"
 
     # Connect to chromadb
     chroma_client = chromadb.PersistentClient(path=chroma_db)
 
-    collection_name = "squad_embeddings"
+    collection_name = args.collection
     print(f"Reading collection {collection_name}...")
 
     collection = chroma_client.get_collection(name=collection_name)
@@ -57,15 +65,21 @@ def main():
             examples.append(json.loads(line))
 
     results = []
-    num_results_per_query = 10
+    num_results_per_query = args.top_n # 10
     num_found = 0
     for i, example in enumerate(examples):
+        if args.limit > 0 and len(results) >= args.limit:
+            break
+        
+        if args.filter != None and example['answer'] == args.filter:
+            continue
+
         print("="*40 + f"START {i}" + "="*40)
         start_time = time.time()
         start_embedding_time = time.time()
         question = example['question']
         q_id = example['id']
-        answers = example['answers']
+        answer = example['answer']
         print(f"Querying for {q_id} -> {question}")
         embeddings = compute_embedding(question)
         end_embedding_time = time.time()
@@ -78,7 +92,7 @@ def main():
         end_search_time = time.time()
         
         print(f"Question: {question}")
-        print(f"Answer: {answers}")
+        print(f"Answer: {answer}")
 
         metadatas = result['metadatas'][0]
         documents = result['documents'][0]
@@ -109,7 +123,7 @@ def main():
         results.append({
             "question_id": q_id,
             "question": question,
-            "answers": answers,
+            "answer": answer,
             "search_results": documents,
             "found_idx": found_idx,
             "n_results": num_results_per_query,
@@ -119,9 +133,10 @@ def main():
             "found_answer": found_it
         })
 
-        percentage = num_found / (i+1)
+        total = len(results)
+        percentage = num_found / (total+1)
         print(f"Total time: {total_time}")
-        print(f"Found {num_found}/{i+1} = {percentage} questions")
+        print(f"Found {num_found}/{total+1} = {percentage} questions")
         print("="*40 + f"END {i}" + "="*40)
 
         if i % 10 == 0:

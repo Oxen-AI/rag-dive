@@ -71,3 +71,11 @@ TODO: Take in N as CLI param
 ```bash
 python compute_recall.py ~/Datasets/Not-In-Context/squad_dev.jsonl chroma-dev.db results.jsonl
 ```
+
+# Compute Precision
+
+Figure out how well we can extract the answer from the context
+
+```bash
+python compute_precision.py -m meta-llama/Llama-2-7b-chat-hf -d ~/Datasets/SQuAD-Context/experiments/dev-recall-3.jsonl -o ~/Datasets/SQuAD-Context/experiments/dev-llama-recall-3-precision-3-shot.jsonl -n 3
+```

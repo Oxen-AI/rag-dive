@@ -6,19 +6,20 @@ from tqdm import tqdm
 # sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import chromadb
 import argparse
+import uuid
 
 # parse arguments for input_file, output_db, should_create_collection
 parser = argparse.ArgumentParser()
 parser.add_argument("-i", "--input_file", type=str)
 parser.add_argument("-o", "--output_db", type=str)
-parser.add_argument("--collection", type=str, default="squad_embeddings")
-parser.add_argument("--should_create", type=bool, default=True)
+parser.add_argument("-c", "--collection", type=str, default="squad_embeddings")
+parser.add_argument("-a", "--append", action="store_true")
 args = parser.parse_args()
 
 input_file = args.input_file
 output_db = args.output_db
 collection_name = args.collection
-should_create = args.should_create
+should_create = not args.append
 
 chroma_client = chromadb.PersistentClient(path=output_db)
 
@@ -44,7 +45,7 @@ for index, row in tqdm(df.iterrows()):
         embeddings=[row["embedding"].tolist()],
         documents=[row["context"]],
         metadatas=[{"question_ids": question_ids_str}],
-        ids=[f"{index}"]
+        ids=[str(uuid.uuid4())]
     )
 end_time = time.time()
 

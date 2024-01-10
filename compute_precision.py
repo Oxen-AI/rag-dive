@@ -5,11 +5,10 @@ import json
 import pandas as pd
 import time
 from tqdm import tqdm
-import ast
+import argparse
 
-def run_mistral(model, tokenizer, question, context):
-
-    text = f"You are a Trivia QA bot. Answer the following trivia question given the context above. Answer the question with a single word if possible. If the context does not give the answer, reply with \"I don't know\".\n"
+def construct_prompt(question, context, n=0):
+    text = f"You are a Trivia QA bot. Answer the following trivia question given the context above. Answer the question with a single word if possible. If the context does not give the answer, reply with \"not_in_context\".\n"
     
     n_shot_prompting = [
         {
@@ -20,7 +19,7 @@ def run_mistral(model, tokenizer, question, context):
         {
             "context": "Lee Jae-myung, the leader of the South Korean opposition, is hospitalized following a stabbing attack in Busan.",
             "question": "What was the strongest earthquake in history?",
-            "answer": "I don't know"
+            "answer": "not_in_context"
         },
         {
             "context": "Dean Lawrence Kamen (born April 5, 1951) is an American engineer, inventor, and businessman. He is known for his invention of the Segway and iBOT,[2] as well as founding the non-profit organization FIRST with Woodie Flowers. Kamen holds over 1,000 patents.",
@@ -35,22 +34,29 @@ def run_mistral(model, tokenizer, question, context):
         {
             "context": "A 1-1 tie in 26 innings was played by the Brooklyn Dodgers and Boston Braves on May 1, 1920, at Braves Field in Boston, still the most innings played in a Major League Baseball (MLB) game.",
             "question": "Where is the Eiffel Tower?",
-            "answer": "I don't know"
+            "answer": "not_in_context"
         }
     ]
-    n_shot_prompting = []
+    if n > 0:
+        n_shot_prompting = n_shot_prompting[:n]
+    else:
+        n_shot_prompting = []
 
     text = f"{text}\n\n" + "\n\n".join([f"Context: {p['context']}\nQuestion: {p['question']}\nAnswer: {p['answer']}" for p in n_shot_prompting])
     text = f"{text}\n\nContext: {context}\nQuestion: {question}\nAnswer: "
+    return text
+
+def run_model(model, tokenizer, question, context, n_shot=0):
+    prompt = construct_prompt(question, context, n=n_shot)
+    
     # print(text)
     
     messages = [
-        {"role": "user", "content": text}
+        {"role": "user", "content": prompt}
     ]
 
     encodeds = tokenizer.apply_chat_template(messages, return_tensors="pt")
 
-    
     # print(text)
     # input_ids = torch.LongTensor([tokenizer.encode(text)]).cuda()
     input_ids = encodeds.cuda()
@@ -77,16 +83,30 @@ def run_mistral(model, tokenizer, question, context):
     answer = cleaned.split("\n\n")[0].strip()
     # answer = cleaned.strip()
     # print(answer)
-    return answer, input_ids.shape[1]
+    return answer
+
+def model_guessed_not_in_context(guess):
+    return "not_in_context" in guess.lower() or "not in context" in guess.lower()
+
+def answer_is_correct(answer, guess):
+    return answer.strip().lower() in guess.strip().lower() or guess.strip().lower() in answer.strip().lower()
 
 def write_results(results, output_file):
     df = pd.DataFrame(results)
     print(f"Writing {output_file}")
     df.to_json(output_file, orient="records", lines=True)
 
-model_name = sys.argv[1]
-dataset = sys.argv[2]
-output_file = sys.argv[3]
+# parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("-m", "--model_name", type=str, default="mistralai/Mistral-7B-Instruct-v0.2", help="HuggingFace model name.")
+parser.add_argument("-d", "--dataset", type=str, help="Dataset to run on.", required=True)
+parser.add_argument("-o", "--output_file", type=str, help="Output file to write results to.", required=True)
+parser.add_argument("-n", "--n_shot", type=int, default=0, help="Number of examples to give for N-Shot Prompt")
+args = parser.parse_args()
+
+model_name = args.model_name
+dataset = args.dataset
+output_file = args.output_file
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map = "auto").cuda()
@@ -110,27 +130,23 @@ with open(dataset) as f:
         # print(data)
         question = data["question"]
         search_results = data["search_results"]
-        answers = data['answers']
+        answer = data['answer']
         search_found_answer = data['found_answer']
         # print(type(answers))
         # print(answers)
-        answers = ast.literal_eval(answers)
         # print(answers)
-        answer = answers[0]['text']
         print(f"Question {i}/{total_qs}")
 
         context = "\n".join(search_results)
 
-        guess, num_tokens = run_mistral(model, tokenizer, question, context)
-        is_correct = (answer.strip().lower() in guess.strip().lower())
+        guess = run_model(model, tokenizer, question, context)
+            
+        is_correct = answer_is_correct(answer, guess)
         print(f"Context: {context}")
         print(f"Context contains answer: {search_found_answer}")
         print(f"Q: {question}")
         print(f"A: {answer}")
         print(f"?: {guess}")
-        
-        
-        print(f"Num Tokens: {num_tokens}")
 
         if is_correct:
             total_correct += 1
@@ -145,16 +161,21 @@ with open(dataset) as f:
         if search_found_answer and is_correct:
             total_correct_and_found += 1
 
-        if "i don't know" not in guess.lower() and is_correct:
+        if not model_guessed_not_in_context(guess) and is_correct:
             total_correct_and_guessed += 1
         
-        if "i don't know" not in guess.lower():
+        if not model_guessed_not_in_context(guess):
             total_guessed += 1
-        
 
         accuracy = total_correct / float(i+1) * 100.0
-        precision = total_correct_and_guessed / float(num_found) * 100.0
-        precision_when_guessed = total_correct_and_guessed / float(total_guessed) * 100.0
+        if num_found > 0:
+            precision = total_correct_and_guessed / float(num_found) * 100.0
+        else:
+            precision = 0.0
+        if total_guessed > 0:
+            precision_when_guessed = total_correct_and_guessed / float(total_guessed) * 100.0
+        else:
+            precision_when_guessed = 0.0
         recall = num_found / float(i+1) * 100.0
         print(f"Accuracy {total_correct}/{i+1} = {accuracy:2f}")
         print(f"Precision {total_correct_and_guessed}/{num_found} = {precision:2f}")
@@ -167,15 +188,14 @@ with open(dataset) as f:
         total_time = end_time - start_time
         result = {
             "idx": i,
+            "question_id": data["question_id"],
             "question": question,
             "context": context,
             "answer": answer,
             "guess": guess,
             "search_found_answer": search_found_answer,
             "is_correct": is_correct,
-            "time": total_time,
-            "num_tokens": num_tokens,
-            "tokens_per_sec": (num_tokens/total_time)
+            "time": total_time
         }
         results.append(result)
 

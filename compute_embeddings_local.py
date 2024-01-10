@@ -15,8 +15,8 @@ import json
 import torch
 from tqdm import tqdm
 
-tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-base")
-model = AutoModel.from_pretrained("thenlper/gte-base").cuda()
+tokenizer = AutoTokenizer.from_pretrained("thenlper/gte-large")
+model = AutoModel.from_pretrained("thenlper/gte-large").cuda()
 
 def average_pool(last_hidden_states, attention_mask):
     last_hidden = last_hidden_states.masked_fill(~attention_mask[..., None].bool(), 0.0)
@@ -30,7 +30,7 @@ def compute_embedding(batch):
     # input_texts = [item['text'] for item in batch]
 
     # Tokenize the input texts
-    batch_dict = tokenizer(input_texts, max_length=512, padding=True, truncation=True, return_tensors='pt')
+    batch_dict = tokenizer(input_texts, max_length=256, padding=True, truncation=True, return_tensors='pt')
     batch_dict = {k: torch.tensor(v).to("cuda") for k, v in batch_dict.items()}
     # print(batch_dict)
 
@@ -61,18 +61,18 @@ def save_embeddings(
     parent_dir = os.path.dirname(outfile)
     if not os.path.exists(parent_dir):
         os.makedirs(parent_dir)
-    
+
     print(f"Saving embeddings to {outfile}")
     table = pa.Table.from_arrays(
         [
             pa.array([chunk['text'] for chunk in acc_chunks]),
-            pa.array([chunk['source'] for chunk in acc_chunks]),
+            pa.array([[chunk['source']] for chunk in acc_chunks]),
             pa.array(embeddings),
         ],
-        names=["text", "source", "embedding"],
+        names=["context", "question_ids", "embedding"],
     )
     pq.write_table(table, outfile)
-    
+
     # Add and commit files to RemoteRepo
     print(f"Adding file to repo {outfile}")
     local_repo.add(outfile)
@@ -84,10 +84,11 @@ def embed_dataset(
     input_dataset: str,
     input_directory: str,
     output_dataset: str,
+    sentence_window_size: int = 3,
     shard_size=100_000
 ):
     splitter = SentenceSplitter(language='en')
-    def generate_sentence_windows(dataset, n=2, batch_size=64, max_examples=-1):
+    def generate_sentence_windows(dataset, n=2, batch_size=10, max_examples=-1):
         for i, x in enumerate(dataset):
             sentences = splitter.split(x['text'])
             sentence_window = []
@@ -110,7 +111,7 @@ def embed_dataset(
 
             if max_examples > 0 and i > max_examples:
                 break
-            
+
 
     oxenai_token = os.environ["OXENAI_API_KEY"]
     config_oxen_auth(oxenai_token)
@@ -137,7 +138,7 @@ def embed_dataset(
         print(f"Dataset size {len(dataset)} rows")
 
         # Interface to compute embeddings
-        sentences = generate_sentence_windows(dataset, n=2)
+        sentences = generate_sentence_windows(dataset, n=sentence_window_size)
 
         acc_chunks = []
         embeddings = []
@@ -161,7 +162,7 @@ def embed_dataset(
                 )
                 acc_chunks = []
                 embeddings = []
-                
+
                 shard_idx += 1
 
         save_embeddings(
@@ -177,7 +178,8 @@ def embed_dataset(
 if __name__ == '__main__':
     embed_dataset(
         input_dataset="datasets/ThePasture",
-        input_directory="data/wikipedia",
-        output_dataset="oxbot/PastureEmbed",
-        shard_size=1_000
+        input_directory="data/SlimPajama",
+        output_dataset="oxbot/SlimPajamaContext-3",
+        sentence_window_size=3,
+        shard_size=50_000
     )
