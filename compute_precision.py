@@ -102,6 +102,7 @@ parser.add_argument("-m", "--model_name", type=str, default="mistralai/Mistral-7
 parser.add_argument("-d", "--dataset", type=str, help="Dataset to run on.", required=True)
 parser.add_argument("-o", "--output_file", type=str, help="Output file to write results to.", required=True)
 parser.add_argument("-e", "--end_instruct", type=str, default="[/INST]", help="String to end the instruction prompt.")
+parser.add_argument("-l", "--context_length", type=int, default=1, help="How many documents we have in the context window")
 parser.add_argument("-n", "--n_shot", type=int, default=0, help="Number of examples to give for N-Shot Prompt")
 args = parser.parse_args()
 
@@ -138,7 +139,7 @@ with open(dataset) as f:
         # print(answers)
         print(f"Question {i}/{total_qs}")
 
-        context = "\n".join(search_results)
+        context = "\n".join(search_results[:args.context_length])
 
         guess = run_model(model, tokenizer, question, context, n_shot=args.n_shot, end_instruct=args.end_instruct)
 
