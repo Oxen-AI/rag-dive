@@ -128,6 +128,7 @@ def embed_dataset(
                 filename,
                 acc_chunks,
                 embeddings,
+                i
             )
             acc_chunks = []
             embeddings = []
@@ -145,11 +146,12 @@ def embed_dataset(
         filename,
         acc_chunks,
         embeddings,
+        i
     )
 
 if __name__ == '__main__':
     embed_dataset(
         input_dataset="datasets/DBPedia-Short-Abstracts",
         input_file="/home/ubuntu/Datasets/DBPedia/short-abstracts-en-contexts.parquet",
-        output_dataset="oxbot/DBPediea-Short-Abstracts-Embeddings"
+        output_dataset="oxbot/DBPedia-Short-Abstracts-Embeddings"
     )
