@@ -5,28 +5,65 @@ import json
 import pandas as pd
 import time
 from tqdm import tqdm
-import ast
+import argparse
 import chromadb
 
-def generate_response(model, tokenizer, question, context):
+def generate_prompt(question, context):
+    text = f"You are a Trivia QA bot. Answer the following trivia question given the context above. Answer the question with a single word if possible. If the context does not give the answer, reply with \"not_in_context\".\n"
 
-    text = f"You are a Trivia QA bot. Answer the following trivia question given the context above. Answer the question with a single word if possible. If the context does not give the answer, reply with \"I don't know\".\n"
-    
     text = f"{text}\n\nContext: {context}\nQuestion: {question}\nAnswer: "
-    # print(text)
-    
+    return text
+
+def run_tiny_llama(model, tokenizer, question, context):
+    text = generate_prompt(question, context)
+
     messages = [
         {"role": "user", "content": text}
     ]
 
     encodeds = tokenizer.apply_chat_template(messages, return_tensors="pt")
-
-    
     # print(text)
     # input_ids = torch.LongTensor([tokenizer.encode(text)]).cuda()
     input_ids = encodeds.cuda()
     # print(input_ids)
-    
+
+    out = model.generate(
+        input_ids,
+        temperature=0.9,
+        max_new_tokens=128,
+        do_sample=True
+    )
+
+    # print(out)
+    decoded = tokenizer.batch_decode(out)[0]
+    print("="*80)
+    print(decoded)
+    print("="*80)
+
+    # out returns the whole sequence plus the original
+    cleaned = decoded.split("<|assistant|>")[-1]
+    cleaned = cleaned.replace("</s>", "")
+
+    # # the model will just keep generating, so only grab the first one
+    answer = cleaned.split("\n\n")[0].strip()
+    # answer = cleaned.strip()
+    # print(answer)
+    return answer
+
+def run_model(model, tokenizer, question, context):
+    text = generate_prompt(question, context)
+    # print(text)
+
+    messages = [
+        {"role": "user", "content": text}
+    ]
+
+    encodeds = tokenizer.apply_chat_template(messages, return_tensors="pt")
+    # print(text)
+    # input_ids = torch.LongTensor([tokenizer.encode(text)]).cuda()
+    input_ids = encodeds.cuda()
+    # print(input_ids)
+
     out = model.generate(
         input_ids,
         temperature=0.9,
@@ -43,7 +80,7 @@ def generate_response(model, tokenizer, question, context):
     # out returns the whole sequence plus the original
     cleaned = decoded.split("[/INST]")[-1]
     cleaned = cleaned.replace("</s>", "")
-    
+
     # # the model will just keep generating, so only grab the first one
     answer = cleaned.split("\n\n")[0].strip()
     # answer = cleaned.strip()
@@ -81,8 +118,15 @@ def retrieve_documents(embeddings, n=3):
     )
     return result['documents'][0]
 
-model_name = sys.argv[1]
-database_name = sys.argv[2]
+parser = argparse.ArgumentParser()
+parser.add_argument("-m", "--model_name", type=str, default="mistralai/Mistral-7B-Instruct-v0.2", help="HuggingFace model name.")
+parser.add_argument("-d", "--database", type=str, help="Database to query.", required=True)
+parser.add_argument("-n", "--num_docs", type=int, help="Number of documents to return in the query.", default=3)
+args = parser.parse_args()
+
+model_name = args.model_name
+database_name = args.database
+
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map = "auto").cuda()
 
@@ -94,7 +138,7 @@ print(f"Reading collection {collection_name}...")
 
 collection = chroma_client.get_collection(name=collection_name)
 
-num_docs = 3
+num_docs = args.num_docs
 print("\n🤖 Ask me anything!")
 while True:
     question = input('> ')
@@ -104,10 +148,11 @@ while True:
     documents = retrieve_documents(embedding, n=num_docs)
     context = "\n\n".join(documents)
     print("*"*40 + "Context" + "*"*40)
-    print(context)
+    for i, document in enumerate(documents):
+        print(f"{i+1}) {document}")
     print("*"*40 + "End Context" + "*"*40)
     print("Reading context and generating response...")
-    guess = generate_response(model, tokenizer, question, context)
+    guess = run_model(model, tokenizer, question, context)
     print("\n\nAnswer:")
     print(guess)
     print("\n")

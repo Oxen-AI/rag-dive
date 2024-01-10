@@ -7,6 +7,7 @@ from tqdm import tqdm
 import chromadb
 import argparse
 import uuid
+import xxhash
 
 # parse arguments for input_file, output_db, should_create_collection
 parser = argparse.ArgumentParser()
@@ -38,15 +39,28 @@ print(df.head())
 print("Indexing into ChromaDB...")
 start_time = time.time()
 
+
 # iterate over the rows
+unique_ids = set()
+total_indexed = 0
 for index, row in tqdm(df.iterrows()):
     question_ids_str = ",".join([str(x) for x in row["question_ids"]])
+    document = row["context"]
+    if document.strip() == "":
+        continue
+
+    hashed_id = xxhash.xxh64(document).hexdigest()
+    if hashed_id in unique_ids:
+        continue
+    unique_ids.add(hashed_id)
+
     collection.add(
         embeddings=[row["embedding"].tolist()],
         documents=[row["context"]],
         metadatas=[{"question_ids": question_ids_str}],
-        ids=[str(uuid.uuid4())]
+        ids=[str(hashed_id)]
     )
+    total_indexed += 1
 end_time = time.time()
 
-print(f"Indexed {len(df)} rows in {end_time-start_time:.2f} seconds")
+print(f"Indexed {total_indexed} rows in {end_time-start_time:.2f} seconds")

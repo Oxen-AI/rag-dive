@@ -9,7 +9,7 @@ import argparse
 
 def construct_prompt(question, context, n=0):
     text = f"You are a Trivia QA bot. Answer the following trivia question given the context above. Answer the question with a single word if possible. If the context does not give the answer, reply with \"not_in_context\".\n"
-    
+
     n_shot_prompting = [
         {
             "context": "Paris is the capital and most populous city of France. With an official estimated population of 2,102,650 residents as of 1 January 2023 in an area of more than 105 km2 (41 sq mi), Paris is the fifth-most populated city in the European Union and the 30th most densely populated city in the world in 2022.",
@@ -46,11 +46,11 @@ def construct_prompt(question, context, n=0):
     text = f"{text}\n\nContext: {context}\nQuestion: {question}\nAnswer: "
     return text
 
-def run_model(model, tokenizer, question, context, n_shot=0):
+def run_model(model, tokenizer, question, context, n_shot=0, end_instruct="[/INST]"):
     prompt = construct_prompt(question, context, n=n_shot)
-    
+
     # print(text)
-    
+
     messages = [
         {"role": "user", "content": prompt}
     ]
@@ -61,7 +61,7 @@ def run_model(model, tokenizer, question, context, n_shot=0):
     # input_ids = torch.LongTensor([tokenizer.encode(text)]).cuda()
     input_ids = encodeds.cuda()
     # print(input_ids)
-    
+
     out = model.generate(
         input_ids,
         temperature=0.9,
@@ -71,14 +71,14 @@ def run_model(model, tokenizer, question, context, n_shot=0):
 
     # print(out)
     decoded = tokenizer.batch_decode(out)[0]
-    # print("="*80)
-    # print(decoded)
-    # print("="*80)
+    print("="*80)
+    print(decoded)
+    print("="*80)
 
     # out returns the whole sequence plus the original
-    cleaned = decoded.split("[/INST]")[-1]
+    cleaned = decoded.split(end_instruct)[-1]
     cleaned = cleaned.replace("</s>", "")
-    
+
     # # the model will just keep generating, so only grab the first one
     answer = cleaned.split("\n\n")[0].strip()
     # answer = cleaned.strip()
@@ -101,6 +101,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--model_name", type=str, default="mistralai/Mistral-7B-Instruct-v0.2", help="HuggingFace model name.")
 parser.add_argument("-d", "--dataset", type=str, help="Dataset to run on.", required=True)
 parser.add_argument("-o", "--output_file", type=str, help="Output file to write results to.", required=True)
+parser.add_argument("-e", "--end_instruct", type=str, default="[/INST]", help="String to end the instruction prompt.")
 parser.add_argument("-n", "--n_shot", type=int, default=0, help="Number of examples to give for N-Shot Prompt")
 args = parser.parse_args()
 
@@ -139,8 +140,8 @@ with open(dataset) as f:
 
         context = "\n".join(search_results)
 
-        guess = run_model(model, tokenizer, question, context)
-            
+        guess = run_model(model, tokenizer, question, context, n_shot=args.n_shot, end_instruct=args.end_instruct)
+
         is_correct = answer_is_correct(answer, guess)
         print(f"Context: {context}")
         print(f"Context contains answer: {search_found_answer}")
@@ -157,13 +158,13 @@ with open(dataset) as f:
 
         if search_found_answer:
             num_found += 1
-        
+
         if search_found_answer and is_correct:
             total_correct_and_found += 1
 
         if not model_guessed_not_in_context(guess) and is_correct:
             total_correct_and_guessed += 1
-        
+
         if not model_guessed_not_in_context(guess):
             total_guessed += 1
 
@@ -184,7 +185,7 @@ with open(dataset) as f:
         print("="*80)
 
         end_time = time.time()
-        
+
         total_time = end_time - start_time
         result = {
             "idx": i,
@@ -201,7 +202,7 @@ with open(dataset) as f:
 
         if len(results) % 20 == 0:
             write_results(results, output_file)
-            
+
         # if len(results) > 10:
         #     break
         sys.stdout.flush()

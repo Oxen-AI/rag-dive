@@ -9,6 +9,7 @@ from transformers import AutoModel, AutoTokenizer, AutoModelForCausalLM
 import oxen
 import pyarrow as pa
 import pyarrow.parquet as pq
+import pandas as pd
 import time
 import os
 import json
@@ -47,18 +48,19 @@ def save_embeddings(
     data_dir,
     filename,
     acc_chunks,
-    embeddings
+    embeddings,
+    i
 ):
     # Save embeddings to Oxen.ai
     basename = os.path.basename(filename)
-    outfile_name = basename.split(".")[0] + f"_embeddings.parquet"
+    outfile_name = basename.split(".")[0] + f"_{i}_embeddings.parquet"
 
     # Write the embeddings to a parquet file
     outfile = os.path.join(data_dir, outfile_name)
     parent_dir = os.path.dirname(outfile)
     if not os.path.exists(parent_dir):
         os.makedirs(parent_dir)
-    
+
     print(f"Saving embeddings to {outfile}")
     table = pa.Table.from_arrays(
         [
@@ -69,7 +71,7 @@ def save_embeddings(
         names=["context", "question_ids", "embedding"],
     )
     pq.write_table(table, outfile)
-    
+
     # Add and commit files to RemoteRepo
     print(f"Adding file to repo {outfile}")
     local_repo.add(outfile)
@@ -99,19 +101,42 @@ def embed_dataset(
 
     # Stream one data file at a time from Oxen.ai
     filename = input_file
-    provider = OxenDataFrameProvider(input_repo, paths=[filename])
-    dataset = StreamingDataset(provider, num_buffers=100)
+    # provider = OxenDataFrameProvider(input_repo, paths=[filename])
+    # dataset = StreamingDataset(provider, num_buffers=100)
 
-    print(f"Dataset size {len(dataset)} rows")
+    # iterate over rows in parquet file
+
+    print("Reading file...")
+    df = pd.read_parquet(filename)
+    print(df)
 
     acc_chunks = []
     embeddings = []
-    for i, batch in enumerate(tqdm(dataset)):
-        batch_chunks, batch_embeddings = compute_embedding([batch])
-        # print(batch_chunks)
-        # print(batch_embeddings)
-        acc_chunks.extend(batch_chunks)
-        embeddings.extend(batch_embeddings)
+    current_batch = []
+    for i, batch in tqdm(df.iterrows()):
+        current_batch.append(batch)
+        if len(current_batch) == 32:
+            batch_chunks, batch_embeddings = compute_embedding(current_batch)
+            acc_chunks.extend(batch_chunks)
+            embeddings.extend(batch_embeddings)
+            current_batch = []
+
+        if i > 0 and i % 100_000 == 0:
+            save_embeddings(
+                local_repo,
+                data_dir,
+                filename,
+                acc_chunks,
+                embeddings,
+            )
+            acc_chunks = []
+            embeddings = []
+
+        # batch_chunks, batch_embeddings = compute_embedding([batch])
+        # # print(batch_chunks)
+        # # print(batch_embeddings)
+        # acc_chunks.extend(batch_chunks)
+        # embeddings.extend(batch_embeddings)
 
 
     save_embeddings(
@@ -124,7 +149,7 @@ def embed_dataset(
 
 if __name__ == '__main__':
     embed_dataset(
-        input_dataset="datasets/Not-In-Context",
-        input_file="dev_contexts.jsonl",
-        output_dataset="oxbot/SQuAD-Dev-Embed-5"
+        input_dataset="datasets/DBPedia-Short-Abstracts",
+        input_file="/home/ubuntu/Datasets/DBPedia/short-abstracts-en-contexts.parquet",
+        output_dataset="oxbot/DBPediea-Short-Abstracts-Embeddings"
     )
