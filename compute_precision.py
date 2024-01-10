@@ -85,6 +85,57 @@ def run_model(model, tokenizer, question, context, n_shot=0, end_instruct="[/INS
     # print(answer)
     return answer
 
+def run_together_ai(model, question, context, n_shot=0):
+    import openai
+    import os
+
+    client = openai.OpenAI(
+        api_key=os.environ.get("TOGETHER_API_KEY"),
+        base_url='https://api.together.xyz',
+    )
+
+    prompt = construct_prompt(question, context, n=n_shot)
+
+    # print(text)
+
+    messages = [
+        {"role": "user", "content": prompt}
+    ]
+
+    chat_completion = client.chat.completions.create(
+        messages=messages,
+        model=model, # "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        max_tokens=1024
+    )
+
+    answer = chat_completion.choices[0].message.content
+    return answer
+
+def run_openai(model, question, context, n_shot=0):
+    import openai
+    import os
+
+    client = openai.OpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY"),
+    )
+
+    prompt = construct_prompt(question, context, n=n_shot)
+
+    # print(text)
+
+    messages = [
+        {"role": "user", "content": prompt}
+    ]
+
+    chat_completion = client.chat.completions.create(
+        messages=messages,
+        model=model, # "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        max_tokens=1024
+    )
+
+    answer = chat_completion.choices[0].message.content
+    return answer
+
 def model_guessed_not_in_context(guess):
     return "not_in_context" in guess.lower() or "not in context" in guess.lower()
 
@@ -99,6 +150,7 @@ def write_results(results, output_file):
 # parse arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--model_name", type=str, default="mistralai/Mistral-7B-Instruct-v0.2", help="HuggingFace model name.")
+parser.add_argument("-s", "--service", type=str, help="Service to use, options: hugging_face, openai, together_ai.")
 parser.add_argument("-d", "--dataset", type=str, help="Dataset to run on.", required=True)
 parser.add_argument("-o", "--output_file", type=str, help="Output file to write results to.", required=True)
 parser.add_argument("-e", "--end_instruct", type=str, default="[/INST]", help="String to end the instruction prompt.")
@@ -110,8 +162,11 @@ model_name = args.model_name
 dataset = args.dataset
 output_file = args.output_file
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map = "auto").cuda()
+if args.service == "openai" or args.service == "together_ai":
+    model = args.model_name
+else:
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map = "auto").cuda()
 
 total_correct = 0
 total_correct_and_found = 0
@@ -141,7 +196,12 @@ with open(dataset) as f:
 
         context = "\n".join(search_results[:args.context_length])
 
-        guess = run_model(model, tokenizer, question, context, n_shot=args.n_shot, end_instruct=args.end_instruct)
+        if args.service == "openai":
+            guess = run_openai(model, question, context, n_shot=args.n_shot)
+        elif args.service == "together_ai":
+            guess = run_together_ai(model, question, context, n_shot=args.n_shot)
+        else:
+            guess = run_model(model, tokenizer, question, context, n_shot=args.n_shot, end_instruct=args.end_instruct)
 
         is_correct = answer_is_correct(answer, guess)
         print(f"Context: {context}")
