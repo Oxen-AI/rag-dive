@@ -129,7 +129,7 @@ def run_openai(model, question, context, n_shot=0):
 
     chat_completion = client.chat.completions.create(
         messages=messages,
-        model=model, # "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        model=model,
         max_tokens=1024
     )
 
