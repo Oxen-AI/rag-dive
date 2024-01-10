@@ -136,6 +136,37 @@ def run_openai(model, question, context, n_shot=0):
     answer = chat_completion.choices[0].message.content
     return answer
 
+def run_llama_cpp(model, question, context, n_shot=0):
+    from llama_cpp import Llama
+
+    prompt = construct_prompt(question, context, n=n_shot)
+
+    # Set gpu_layers to the number of layers to offload to GPU. Set to 0 if no GPU acceleration is available on your system.
+    llm = Llama(
+        model_path=model, # "./mistral-7b-instruct-v0.2.Q4_K_M.gguf",  # Download the model file first
+        n_ctx=32768,  # The max sequence length to use - note that longer sequence lengths require much more resources
+        n_threads=8,            # The number of CPU threads to use, tailor to your system and the resulting performance
+        n_gpu_layers=35         # The number of layers to offload to GPU, if you have GPU acceleration available
+    )
+
+    # Simple inference example
+    # chat_completion = llm(
+    #     f"<s>[INST] {prompt} [/INST]", # Prompt
+    #     max_tokens=512,  # Generate up to 512 tokens
+    #     stop=["</s>"],   # Example stop token - not necessarily correct for this specific model! Please check before using.
+    #     echo=True        # Whether to echo the prompt
+    # )
+
+    chat_completion = llm.create_chat_completion(
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
+    )
+    print(chat_completion)
+
+    answer = chat_completion['choices'][0]['message']['content'].strip()
+    return answer
+
 def model_guessed_not_in_context(guess):
     return "not_in_context" in guess.lower() or "not in context" in guess.lower()
 
@@ -162,7 +193,7 @@ model_name = args.model_name
 dataset = args.dataset
 output_file = args.output_file
 
-if args.service == "openai" or args.service == "together_ai":
+if args.service == "openai" or args.service == "together_ai" or args.service == "llama_cpp":
     model = args.model_name
 else:
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -189,6 +220,8 @@ with open(dataset) as f:
         search_results = data["search_results"]
         answer = data['answer']
         search_found_answer = data['found_answer']
+        found_idx = data['found_idx']
+        search_found_answer = search_found_answer and found_idx < args.context_length
         # print(type(answers))
         # print(answers)
         # print(answers)
@@ -200,6 +233,8 @@ with open(dataset) as f:
             guess = run_openai(model, question, context, n_shot=args.n_shot)
         elif args.service == "together_ai":
             guess = run_together_ai(model, question, context, n_shot=args.n_shot)
+        elif args.service == "llama_cpp":
+            guess = run_llama_cpp(model, question, context, n_shot=args.n_shot)
         else:
             guess = run_model(model, tokenizer, question, context, n_shot=args.n_shot, end_instruct=args.end_instruct)
 
