@@ -167,6 +167,7 @@ print(f"Reading collection {collection_name}...")
 
 collection = chroma_client.get_collection(name=collection_name)
 
+
 num_docs = args.num_docs
 print("\n🤖 Ask me anything!")
 while True:
